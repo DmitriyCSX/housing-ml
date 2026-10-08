@@ -21,6 +21,15 @@ catboost
 xgboost
 torch
 ```
+## Данные
+```
+Датасет нужно скачать отдельно с Kaggle - не пушил CSV-шки:
+[House Prices - Advanced Regression Techniques](https://www.kaggle.com/c/house-prices-advanced-regression-techniques/overview)
+
+Положи файлы в папку `data/` под именами:
+- `data/train_housing.csv`
+- `data/test_housingadd.csv`
+```
 
 ## Запуск
 
