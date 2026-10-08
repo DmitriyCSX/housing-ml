@@ -8,3 +8,4 @@ submissions/*.csv
 !submissions/.gitkeep
 
 .ipyn
+catboost_info/
