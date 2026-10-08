@@ -1,0 +1,98 @@
+project: housing
+task: regression
+target: SalePrice
+id_column: Id
+
+data:
+  train_path: data/train_housing.csv
+  test_path: data/test_housing.csv
+  submission_path: submissions/submission_housing.csv
+
+features:
+  drop_columns: [Id]
+  log_target: true
+
+  none_categorical:
+    - PoolQC
+    - MiscFeature
+    - Alley
+    - Fence
+    - FireplaceQu
+    - GarageType
+    - GarageFinish
+    - GarageQual
+    - GarageCond
+    - BsmtQual
+    - BsmtCond
+    - BsmtExposure
+    - BsmtFinType1
+    - BsmtFinType2
+    - MasVnrType
+
+  none_numeric:
+    - MasVnrArea
+    - GarageYrBlt
+    - BsmtFinSF1
+    - BsmtFinSF2
+    - BsmtUnfSF
+    - TotalBsmtSF
+    - BsmtFullBath
+    - BsmtHalfBath
+    - GarageCars
+    - GarageArea
+
+  group_median:
+    LotFrontage: Neighborhood
+
+  fillna:
+    Electrical: mode
+
+  ordinal:
+    ExterQual: &quality {None: 0, Po: 1, Fa: 2, TA: 3, Gd: 4, Ex: 5}
+    ExterCond: *quality
+    BsmtQual: *quality
+    BsmtCond: *quality
+    HeatingQC: *quality
+    KitchenQual: *quality
+    FireplaceQu: *quality
+    GarageQual: *quality
+    GarageCond: *quality
+    GarageFinish: {None: 0, Unf: 1, RFn: 2, Fin: 3}
+    BsmtExposure: {None: 0, No: 1, Mn: 2, Av: 3, Gd: 4}
+    BsmtFinType1: {None: 0, Unf: 1, LwQ: 2, Rec: 3, BLQ: 4, ALQ: 5, GLQ: 6}
+    BsmtFinType2: {None: 0, Unf: 1, LwQ: 2, Rec: 3, BLQ: 4, ALQ: 5, GLQ: 6}
+    Functional: {Sal: 0, Sev: 1, Maj2: 2, Maj1: 3, Mod: 4, Min2: 5, Min1: 6, Typ: 7}
+
+  onehot: auto
+  fe: true
+
+  # Для CatBoost не нужно, но полезно для будущих экспериментов.
+  # Препроцессор применяет StandardScaler к этим колонкам (fit на train).
+  scale_columns: null
+
+model:
+  name: catboost
+  params:
+    iterations: 357
+    learning_rate: 0.05
+    depth: 4
+    reg_lambda: 0.95
+    random_state: 42
+    verbose: false
+
+training:
+  cv_folds: 5
+  cv_strategy: kfold
+  scoring: rmse
+  test_size: 0.2
+  random_state: 42
+
+tuning:
+  enabled: false
+  n_trials: 50
+  direction: minimize
+  search_space:
+    iterations: {type: int, low: 100, high: 1500}
+    learning_rate: {type: float, low: 0.01, high: 0.2, log: true}
+    depth: {type: int, low: 3, high: 10}
+    reg_lambda: {type: float, low: 1e-8, high: 10.0, log: true}
