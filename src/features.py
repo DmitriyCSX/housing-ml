@@ -12,6 +12,8 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 # Feature engineering
 # ============================================================
 
+# build_housing_features(df) - FE-пайплайн: TotalSF, TotalBath, Age, RemodAge, TotalRooms, 
+# HasGarage, HasBsmt, HasPool, Has2ndFloor, OverallQuality
 def build_housing_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df["TotalSF"] = df["TotalBsmtSF"] + df["1stFlrSF"] + df["2ndFlrSF"]
@@ -40,7 +42,7 @@ class TabularPreprocessor:
     """
     Универсальный препроцессор:
       - drop_columns
-      - "нет фичи" → None / 0
+      - "нет фичи"  =>  None / 0
       - групповые медианы (fit на train)
       - impute медианой/модой (fit на train)
       - ordinal encoding
@@ -83,6 +85,7 @@ class TabularPreprocessor:
         self.is_fitted = True
         return self
 
+    # TabularPreprocessor.transform(df) - применяет обученные преобразования к val/test (без пересчёта статистик)
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
         assert self.is_fitted, "Сначала fit()"
         df = df.copy()
@@ -99,25 +102,31 @@ class TabularPreprocessor:
                 df[col] = 0
         df = df[self.feature_columns_]
         return df
-
+    
+    # TabularPreprocessor.fit_transform(df) - fit + transform за один вызов
     def fit_transform(self, df: pd.DataFrame) -> pd.DataFrame:
         return self.fit(df).transform(df)
-
+    
+    #  обратное преобразование таргета (expm1 для SalePrice)
     def inverse_target(self, y):
         if self.cfg.get("log_target"):
             return np.expm1(y)
         return y
 
+    # прямое преобразование таргета (log1p для SalePrice)
     def transform_target(self, y):
         if self.cfg.get("log_target"):
             return np.log1p(y)
         return y
 
     # ---------- внутренние шаги ----------
-
+    
+    
+    # TabularPreprocessor._log_target_fit(df) - заглушка; лог-трансформация применяется отдельно в train/predict
     def _log_target_fit(self, df):
         pass
-
+    
+    # TabularPreprocessor._drop_columns(df) - удаляет колонки из config.features.drop_columns (Id)
     def _drop_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         drop = self.cfg.get("drop_columns") or []
         existing = [c for c in drop if c in df.columns]
@@ -125,6 +134,8 @@ class TabularPreprocessor:
             df = df.drop(columns=existing)
         return df
 
+    # "нет фичи"  =>  "None" для категориальных (PoolQC, Alley, ...), 
+    # 0 для числовых (MasVnrArea, GarageYrBlt, ...)
     def _fill_none(self, df: pd.DataFrame) -> pd.DataFrame:
         for col in self.cfg.get("none_categorical", []):
             if col in df.columns:
@@ -134,6 +145,8 @@ class TabularPreprocessor:
                 df[col] = df[col].fillna(0)
         return df
 
+    # считает медианы LotFrontage по Neighborhood 
+    # и заполняет пропуски (fit на train)
     def _fit_group_medians(self, df: pd.DataFrame) -> pd.DataFrame:
         self.group_medians_ = {}
         for col, group in self.cfg.get("group_median", {}).items():
@@ -142,7 +155,8 @@ class TabularPreprocessor:
                 self.group_medians_[col] = med
                 df[col] = df[col].fillna(df[group].map(med))
         return df
-
+    
+    # TabularPreprocessor._apply_group_medians(df) - применяет сохранённые медианы к val/test
     def _apply_group_medians(self, df: pd.DataFrame) -> pd.DataFrame:
         for col, med in getattr(self, "group_medians_", {}).items():
             group = self.cfg["group_median"][col]
@@ -150,6 +164,7 @@ class TabularPreprocessor:
                 df[col] = df[col].fillna(df[group].map(med))
         return df
 
+    # заполняет Electrical модой (fit на train) или применяет сохранённое значение
     def _impute(self, df: pd.DataFrame, fit: bool) -> pd.DataFrame:
         fillna_cfg = self.cfg.get("fillna", {})
         if fit:
@@ -167,6 +182,7 @@ class TabularPreprocessor:
             df[col] = df[col].fillna(self.impute_stats_[col])
         return df
 
+    # ordinal-кодирование ExterQual, BsmtQual, KitchenQual, GarageFinish и др. по маппингу из конфига
     def _encode_ordinal(self, df: pd.DataFrame, fit: bool) -> pd.DataFrame:
         ordinal_cfg = self.cfg.get("ordinal", {})
         if fit:
@@ -182,6 +198,7 @@ class TabularPreprocessor:
             df[col] = df[col].map(self.ordinal_maps_[col]).fillna(0).astype(int)
         return df
 
+    # обучает OneHotEncoder на train; onehot="auto"  =>  все оставшиеся object-колонки
     def _fit_onehot(self, df: pd.DataFrame) -> pd.DataFrame:
         onehot_cfg = self.cfg.get("onehot", [])
         if onehot_cfg == "auto":
@@ -197,6 +214,7 @@ class TabularPreprocessor:
             self.onehot_encoder_.fit(df[onehot_cols])
         return df
 
+    # TabularPreprocessor._apply_onehot(df) - применяет OHE к val/test, дропает исходные категориальные колонки
     def _apply_onehot(self, df: pd.DataFrame) -> pd.DataFrame:
         if not getattr(self, "onehot_cols_", None):
             return df
@@ -209,6 +227,7 @@ class TabularPreprocessor:
         df = df.drop(columns=self.onehot_cols_)
         return pd.concat([df, encoded_df], axis=1)
 
+    # TabularPreprocessor._fit_scaler(df) - обучает StandardScaler (для housing scale_columns=null  =>  scaler отключён)
     def _fit_scaler(self, df: pd.DataFrame) -> pd.DataFrame:
         scale_cols = self.cfg.get("scale_columns")
         if not scale_cols:
@@ -220,6 +239,7 @@ class TabularPreprocessor:
             self.scaler_.fit(df[self.scale_cols_])
         return df
 
+    # TabularPreprocessor._apply_scaler(df) - применяет scaler к val/test (в housing - ничего не делает)
     def _apply_scaler(self, df: pd.DataFrame) -> pd.DataFrame:
         if getattr(self, "scaler_", None) is None:
             return df
